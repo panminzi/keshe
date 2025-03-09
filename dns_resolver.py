@@ -1,7 +1,12 @@
 import socket
 import struct
 import random
+import re
 
+def validate_domain(domain):
+    """验证域名格式"""
+    pattern = r"^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$"
+    return re.match(pattern, domain) is not None
 def resolve_dns(domain, dns_server='8.8.8.8', timeout=5):
     query = build_query(domain)
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:

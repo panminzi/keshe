@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext
 import threading
 from dns_resolver import resolve_dns, build_query, parse_response
-
+from dns_resolver import validate_domain
 
 class DNSResolverApp:
     def __init__(self, root):
@@ -82,15 +82,20 @@ class DNSResolverApp:
 
     def start_query_thread(self):
         domain = self.domain_entry.get().strip()
+        # 格式验证
         if not domain:
             messagebox.showwarning("输入错误", "请输入要查询的域名")
             return
+        if not validate_domain(domain):
+            self.show_result("错误：域名格式不正确", success=False)
+            return
+
+        # 原查询逻辑保持不变...
         self.update_status("查询中...")
         self.query_btn.config(state=tk.DISABLED)
         threading.Thread(
             target=self.perform_dns_query, args=(domain,), daemon=True
         ).start()
-
     def perform_dns_query(self, domain):
         try:
             ips = resolve_dns(domain)
