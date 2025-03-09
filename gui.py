@@ -16,7 +16,8 @@ class DNSResolverApp:
 
     def create_widgets(self):
         main_frame = ttk.Frame(self.root)
-        main_frame.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
+        #main_frame.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
+        main_frame.pack(padx=20, pady=20, fill=tk.BOTH, expand=True)  # 增加外边距
 
         # 输入区域
         input_frame = ttk.Frame(main_frame)
@@ -31,13 +32,49 @@ class DNSResolverApp:
 
         # 结果区域
         result_frame = ttk.LabelFrame(main_frame, text="查询结果")
-        result_frame.pack(fill=tk.BOTH, expand=True, pady=5)
-        self.result_text = tk.Text(result_frame, height=4, wrap=tk.WORD, state=tk.DISABLED)
-        self.result_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        self.visit_btn = ttk.Button(
-            result_frame, text="访问网站", command=self.visit_website, state=tk.DISABLED
+        result_frame.pack(fill=tk.X, pady=8, ipadx=5, ipady=2)  # 减少内边距
+
+        # 水平布局容器
+        result_row = ttk.Frame(result_frame)
+        result_row.pack(pady=3, fill=tk.X)
+
+        # IP地址标签
+        self.ip_label = ttk.Label(
+            result_row,
+            text="IP地址：",
+            font=('微软雅黑', 9)
         )
-        self.visit_btn.pack(pady=5)
+        self.ip_label.pack(side=tk.LEFT, padx=(10, 0))
+
+        # IP值显示（蓝色）
+        self.ip_value = ttk.Label(
+            result_row,
+            text="",
+            font=('Consolas', 9, 'bold'),
+            foreground="#1E90FF",
+            width=15,
+            anchor='w'
+        )
+        self.ip_value.pack(side=tk.LEFT, padx=(0, 20))
+
+        # 访问按钮
+        self.visit_btn = ttk.Button(
+            result_row,
+            text="访问网站",
+            command=self.visit_website,
+            state=tk.DISABLED,
+            width=8
+        )
+        self.visit_btn.pack(side=tk.RIGHT, padx=10)#靠右且距离边框10个像素
+
+        # 错误信息标签（独立行）
+        self.error_label = ttk.Label(
+            result_frame,
+            text="",
+            foreground="#FF4500",
+            font=('微软雅黑', 8)
+        )
+        self.error_label.pack(pady=2)
 
         # 历史记录
         history_frame = ttk.LabelFrame(main_frame, text="查询历史")
@@ -46,6 +83,8 @@ class DNSResolverApp:
             history_frame, height=8, wrap=tk.WORD, state=tk.DISABLED
         )
         self.history_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.ip_label.configure(font=('TkDefaultFont', 10), anchor='center')
+        result_frame.configure(padding=10)  # 内边距
 
         # 状态栏
         self.status_bar = ttk.Label(main_frame, text="就绪", relief=tk.SUNKEN, anchor=tk.W)
@@ -65,9 +104,10 @@ class DNSResolverApp:
     def perform_dns_query(self, domain):
         try:
             ips = resolve_dns(domain)
+            print("[DEBUG] 解析结果:", ips)  # 调试输出
             if ips:
                 self.current_ip = ips[0]
-                result = f"IP地址：{self.current_ip}"
+                result = f"{self.current_ip}"
                 self.add_history(f"{domain} -> {self.current_ip}")
             else:
                 result = "未找到对应的IP地址"
@@ -96,7 +136,16 @@ class DNSResolverApp:
         self.history_text.config(state=tk.DISABLED)
 
     def show_result(self, text, success=True):
-        self.root.after(0, lambda: self._update_result(text, success))
+        if success:
+            # 正确更新IP显示组件
+            self.ip_value.config(text=text)
+            self.error_label.config(text="")
+            self.visit_btn.config(state=tk.NORMAL)
+        else:
+            self.ip_value.config(text="")
+            self.error_label.config(text=text)
+            self.visit_btn.config(state=tk.DISABLED)
+       # self.root.after(0, lambda: self._update_result(text, success))
 
     def _update_result(self, text, success):
         self.result_text.config(state=tk.NORMAL)

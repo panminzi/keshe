@@ -217,7 +217,7 @@ class DNSResolverApp:
                 name.append(data[offset:offset + length].decode())
                 offset += length
         return name, offset
-
+'''
 
 if __name__ == '__main__':
     root = tk.Tk()
@@ -229,3 +229,4 @@ if __name__ == '__main__':
     style.configure("TEntry", padding=4)
 
     root.mainloop()
+    '''
