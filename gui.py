@@ -8,7 +8,7 @@ class DNSResolverApp:
     def __init__(self, root):
         self.root = root
         root.title("DNS解析器 ")
-        root.geometry("680x500")
+        root.geometry("490x400")
 
         self.history = []
         self.current_ip = ""
@@ -22,7 +22,7 @@ class DNSResolverApp:
         # 输入区域
         input_frame = ttk.Frame(main_frame)
         input_frame.pack(fill=tk.X, pady=5)
-        ttk.Label(input_frame, text="输入完整域名：").pack(side=tk.LEFT)
+        ttk.Label(input_frame, text="输入域名：").pack(side=tk.LEFT)
         self.domain_entry = ttk.Entry(input_frame, width=30)
         self.domain_entry.pack(side=tk.LEFT, padx=5)
         self.query_btn = ttk.Button(
@@ -46,35 +46,25 @@ class DNSResolverApp:
         )
         self.ip_label.pack(side=tk.LEFT, padx=(10, 0))
 
-        # IP值显示（蓝色）
-        self.ip_value = ttk.Label(
+        # 动态显示区域（IP地址/错误信息）
+        self.display_area = ttk.Label(
             result_row,
             text="",
-            font=('Consolas', 9, 'bold'),
-            foreground="#1E90FF",
-            width=15,
+            font=('Consolas', 12),
+            width=25,
             anchor='w'
         )
-        self.ip_value.pack(side=tk.LEFT, padx=(0, 20))
+        self.display_area.pack(side=tk.LEFT, padx=(0, 15))
 
         # 访问按钮
         self.visit_btn = ttk.Button(
             result_row,
-            text="访问网站",
+            text="🌐 访问网站",
             command=self.visit_website,
             state=tk.DISABLED,
-            width=8
+            width=20
         )
-        self.visit_btn.pack(side=tk.RIGHT, padx=10)#靠右且距离边框10个像素
-
-        # 错误信息标签（独立行）
-        self.error_label = ttk.Label(
-            result_frame,
-            text="",
-            foreground="#FF4500",
-            font=('微软雅黑', 8)
-        )
-        self.error_label.pack(pady=2)
+        self.visit_btn.pack(side=tk.RIGHT, padx=15)  #靠右且距离边框10个像素
 
         # 历史记录
         history_frame = ttk.LabelFrame(main_frame, text="查询历史")
@@ -107,10 +97,10 @@ class DNSResolverApp:
             print("[DEBUG] 解析结果:", ips)  # 调试输出
             if ips:
                 self.current_ip = ips[0]
-                result = f"{self.current_ip}"
+                result = f"✅ {self.current_ip}"
                 self.add_history(f"{domain} -> {self.current_ip}")
             else:
-                result = "未找到对应的IP地址"
+                result = "❌ 未找到对应的IP地址"
                 self.current_ip = ""
             self.show_result(result, success=bool(ips))
         except Exception as e:
@@ -136,16 +126,26 @@ class DNSResolverApp:
         self.history_text.config(state=tk.DISABLED)
 
     def show_result(self, text, success=True):
+        # 清空历史显示内容
+        self.display_area.config(text="")
         if success:
-            # 正确更新IP显示组件
-            self.ip_value.config(text=text)
-            self.error_label.config(text="")
+            # 成功显示蓝色IP地址
+            self.display_area.config(
+                text=text,
+                foreground="#1E90FF",
+                font=('Consolas', 9, 'bold')
+            )
             self.visit_btn.config(state=tk.NORMAL)
         else:
-            self.ip_value.config(text="")
-            self.error_label.config(text=text)
+            # 错误显示红色信息
+            self.display_area.config(
+                text=text,
+                foreground="#FF4500",
+                font=('微软雅黑', 9)
+            )
             self.visit_btn.config(state=tk.DISABLED)
-       # self.root.after(0, lambda: self._update_result(text, success))
+
+    # self.root.after(0, lambda: self._update_result(text, success))
 
     def _update_result(self, text, success):
         self.result_text.config(state=tk.NORMAL)
