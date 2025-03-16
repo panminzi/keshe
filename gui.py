@@ -10,7 +10,7 @@ class DNSResolverApp:
     def __init__(self, root):
         self.root = root
         root.title("DNS解析器 ")
-        root.geometry("600x600")
+        root.geometry("800x600")
 
         self.history = []
         self.current_ip = ""
@@ -76,7 +76,7 @@ class DNSResolverApp:
             process_frame,
             columns=("step", "detail"),
             show="tree",
-            height=6
+            height=4
         )
         # ===== 过程跟踪Treeview配置 =====
         # 列定义
@@ -85,7 +85,7 @@ class DNSResolverApp:
         self.process_tree.heading("detail", text="详细信息", anchor="w")
 
         # 列宽配置
-        self.process_tree.column("#0", width=120, minwidth=100)  # 步骤列
+        self.process_tree.column("#0", width=10, minwidth=10)  # 步骤列
         self.process_tree.column("detail", width=300, stretch=True)  # 详情列自动扩展
 
         # 布局优化
@@ -145,8 +145,8 @@ class DNSResolverApp:
                 logger.add_step("等待响应", True, "超时设置：5秒")
                 data, _ = sock.recvfrom(512)
                 logger.add_step("接收响应", True,
-                                f"响应长度：{len(data)}字节\n"
-                                f"十六进制头：{binascii.hexlify(data[:12]).decode()}")
+                                f"响应长度：{len(data)}字节  "
+                    f"十六进制头：{binascii.hexlify(data[:12]).decode()}")
                 print("等待响应"+f"十六进制头：{binascii.hexlify(data[:12]).decode()}")
 
             # 步骤4：解析响应

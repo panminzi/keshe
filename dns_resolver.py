@@ -25,11 +25,11 @@ def resolve_dns(domain, logger=None):
         if logger: logger.add_step("发送请求", True, "使用UDP协议")
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.settimeout(5)
-            sock.sendto(query, ('8.8.8.8', 53))
+            sock.sendto(query, ('8.8.8.8', 53))#谷歌公共DNS地址，53为端口号、udp协议
 
     # 等待响应
             if logger: logger.add_step("等待响应", True, "超时：5秒")
-            data, _ = sock.recvfrom(512)
+            data, _ = sock.recvfrom(512)#从 UDP 套接字中接收数据包，最多接收 512 字节 的数据，返回数据，忽略地址
         # 解析响应
         if logger: logger.add_step("解析响应", True)
         ips = parse_response(data)
@@ -53,25 +53,26 @@ def resolve_dns(domain, dns_server='8.8.8.8', timeout=5):
 
 
 def build_query(domain, logger=None):
-    """带报文记录的查询构造"""
+    """构造DNS查询报文"""
+    # 构造 DNS 报文头部
     header = struct.pack('!HHHHHH',
-                         random.randint(0, 65535),  # 事务ID
-                         0x0100,  # 标志
-                         1, 0, 0, 0
+                         random.randint(0, 65535),  # 事务ID，用于匹配请求与响应，确保查询的唯一性
+                         0x0100,  # 标志，（标准查询 + 递归查询）
+                         1, 0, 0, 0#问题数=1，其余字段均为0
                          )
-
+     #构造域名编码
     qname = b''
     for part in domain.encode().split(b'.'):
         qname += struct.pack('!B', len(part)) + part
     qname += b'\x00'
-
-    question = qname + struct.pack('!HH', 1, 1)
-    packet = header + question
+   #构造问题部分
+    question = qname + struct.pack('!HH', 1, 1)#第一个1表示A 记录（IPv4 地址），第二个表示互联网类
+    packet = header + question# 拼接完整报文
     # 添加报文记录
     hex_packet = binascii.hexlify(packet).decode('utf-8')
-    formatted_packet = '\n'.join([hex_packet[i:i+32] for i in range(0, len(hex_packet), 32)])
+    formatted_packet = ' '.join([hex_packet[i:i+32] for i in range(0, len(hex_packet), 32)])#32 字符的十六进制字符串就空格
     if logger:
-        logger.add_step("构造查询报文", True, f"报文内容：{formatted_packet}")
+        logger.add_step("构造查询报文", True, f"报文：{formatted_packet}")
         print("构造报文"+f"{formatted_packet}")
     return packet
 
