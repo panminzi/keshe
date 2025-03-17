@@ -5,12 +5,13 @@ from tkinter import ttk, messagebox, scrolledtext
 import threading
 from dns_resolver import resolve_dns, build_query, parse_response
 from dns_resolver import validate_domain
+from concurrent.futures import ThreadPoolExecutor
 
 class DNSResolverApp:
     def __init__(self, root):
         self.root = root
         root.title("DNS解析器 ")
-        root.geometry("800x600")
+        root.geometry("800x700")
 
         self.history = []
         self.current_ip = ""
@@ -91,12 +92,48 @@ class DNSResolverApp:
         # 布局优化
         self.process_tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
+        # ========= 新增污染检测区域 =========
+        pollution_frame = ttk.LabelFrame(main_frame, text="DNS污染检测")
+        pollution_frame.pack(fill=tk.BOTH, expand=False, pady=3, ipadx=5, ipady=2)  # 关闭expand并减少内边距
+
+        # 检测结果树状图
+        self.pollution_tree = ttk.Treeview(
+            pollution_frame,
+            columns=('server', 'status', 'ip', 'confidence'),
+            show='headings',
+            height=3
+        )
+
+        # 配置列
+        columns = [
+            ('server', 'DNS服务器', 100),
+            ('status', '状态', 80),
+            ('ip', '返回IP', 150),
+            ('confidence', '可信度', 80)
+        ]
+        for col_id, text, width in columns:
+            self.pollution_tree.heading(col_id, text=text)
+            self.pollution_tree.column(col_id, width=width, anchor='center')
+
+        # 滚动条
+        scroll = ttk.Scrollbar(pollution_frame, orient="vertical", command=self.pollution_tree.yview)
+        self.pollution_tree.configure(yscrollcommand=scroll.set)
+        self.pollution_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # 检测结论标签
+        self.pollution_status = ttk.Label(
+            pollution_frame,
+            text="待检测",
+            font=('微软雅黑', 9, 'bold')
+        )
+        self.pollution_status.pack(side=tk.BOTTOM, fill=tk.X, pady=3)
 
         # 历史记录
         history_frame = ttk.LabelFrame(main_frame, text="查询历史")
         history_frame.pack(fill=tk.BOTH, expand=True, pady=5)
         self.history_text = scrolledtext.ScrolledText(
-            history_frame, height=8, wrap=tk.WORD, state=tk.DISABLED
+            history_frame, height=4, wrap=tk.WORD, state=tk.DISABLED
         )
         self.history_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         self.ip_label.configure(font=('TkDefaultFont', 10), anchor='center')
@@ -123,51 +160,7 @@ class DNSResolverApp:
             target=self.perform_dns_query, args=(domain,), daemon=True
         ).start()
 
-    def perform_dns_query(self, domain):
-        try:
-            # 初始化过程跟踪
-            self.process_tree.delete(*self.process_tree.get_children())
-            logger = DNSLogger(self)
 
-            # 步骤1：构造查询报文
-            query = build_query(domain, logger)
-
-            # 步骤2：发送请求
-            logger.add_step("发送查询请求", True,
-                            f"目标服务器：8.8.8.8:53"
-                            )
-
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-                sock.settimeout(5)
-                sock.sendto(query, ('8.8.8.8', 53))
-
-                # 步骤3：接收响应
-                logger.add_step("等待响应", True, "超时设置：5秒")
-                data, _ = sock.recvfrom(512)
-                logger.add_step("接收响应", True,
-                                f"响应长度：{len(data)}字节  "
-                    f"十六进制头：{binascii.hexlify(data[:12]).decode()}")
-                print("等待响应"+f"十六进制头：{binascii.hexlify(data[:12]).decode()}")
-
-            # 步骤4：解析响应
-            ips = parse_response(data, logger)
-            print("[DEBUG] 解析结果:", ips)  # 调试输出
-
-            # 显示最终结果
-            if ips:
-                self.current_ip=ips[0]#传给“访问网站”
-                self.show_result(f"✅ {self.current_ip}",success=bool(ips))
-                self.add_history(f"{domain} -> {ips[0]}")
-            else:
-                self.show_result("❌ 未找到对应的IP地址", success=bool(ips))
-
-        except Exception as e:
-            logger.add_step("解析失败", False, str(e))
-
-        finally:
-            self.update_status("就绪")
-            self.query_btn.config(state=tk.NORMAL)
-            self.visit_btn.config(state=tk.NORMAL if self.current_ip else tk.DISABLED)
 
     '''  
     def perform_dns_query(self, domain):
@@ -248,6 +241,138 @@ class DNSResolverApp:
             values=(detail,)
         )
         self.process_tree.see(item_id)  # 自动滚动到最新条目
+
+#DNS污染检测
+    def perform_dns_query(self, domain):
+        try:
+            # 初始化所有结果区域
+            self._clear_all_results()
+            logger = DNSLogger(self)
+
+            # ========= 新增污染检测流程 =========
+            def pollution_check():
+                """污染检测子线程"""
+                try:
+                    servers = {
+                        'Google': '8.8.8.8',
+                        'Cloudflare': '1.1.1.1',
+                        'Quad9': '9.9.9.9'
+                    }
+
+                    # 并发查询所有服务器
+                    with ThreadPoolExecutor() as executor:
+                        futures = {
+                            executor.submit(resolve_dns, domain, server): name
+                            for name, server in servers.items()
+                        }
+
+                        results = {}
+                        for future in futures:
+                            name = futures[future]
+                            try:
+                                ips = future.result(timeout=5)
+                                results[name] = ips
+                                self._update_pollution_tree(name, "✅ 正常", ips, "")
+                            except Exception as e:
+                                results[name] = []
+                                self._update_pollution_tree(name, "❌ 异常", "", str(e))
+
+                        # 分析结果
+                        all_ips = [ip for ips in results.values() for ip in ips]
+                        ip_counts = {ip: all_ips.count(ip) for ip in set(all_ips)}
+                        if ip_counts:
+                            max_count = max(ip_counts.values())
+                            total = len(servers)
+                            confidence = f"{max_count}/{total}"
+
+                            if max_count == total:
+                                status = "✅ 结果一致"
+                                color = "green"
+                            elif max_count >= total // 2 + 1:
+                                status = "⚠️ 疑似污染"
+                                color = "orange"
+                            else:
+                                status = "❌ 确认污染"
+                                color = "red"
+
+                            self.root.after(0, lambda:
+                            self.pollution_status.config(text=status, foreground=color))
+                except Exception as e:
+                    self.root.after(0, lambda:
+                    self.pollution_status.config(text=f"检测失败: {str(e)}", foreground="red"))
+
+            # 启动污染检测线程
+            threading.Thread(target=pollution_check, daemon=True).start()
+            # 初始化过程跟踪
+            self.process_tree.delete(*self.process_tree.get_children())
+            logger = DNSLogger(self)
+
+            # 步骤1：构造查询报文
+            query = build_query(domain, logger)
+
+            # 步骤2：发送请求
+            logger.add_step("发送查询请求", True,
+                            f"目标服务器：8.8.8.8:53"
+                            )
+
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                sock.settimeout(5)
+                sock.sendto(query, ('8.8.8.8', 53))
+
+                # 步骤3：接收响应
+                logger.add_step("等待响应", True, "超时设置：5秒")
+                data, _ = sock.recvfrom(512)
+                logger.add_step("接收响应", True,
+                                f"响应长度：{len(data)}字节  "
+                    f"十六进制头：{binascii.hexlify(data[:12]).decode()}")
+                print("等待响应"+f"十六进制头：{binascii.hexlify(data[:12]).decode()}")
+
+            # 步骤4：解析响应
+            ips = parse_response(data, logger)
+            print("[DEBUG] 解析结果:", ips)  # 调试输出
+
+            # 显示最终结果
+            if ips:
+                self.current_ip=ips[0]#传给“访问网站”
+                self.show_result(f"✅ {self.current_ip}",success=bool(ips))
+                self.add_history(f"{domain} -> {ips[0]}")
+            else:
+                self.show_result("❌ 未找到对应的IP地址", success=bool(ips))
+
+        except Exception as e:
+            logger.add_step("解析失败", False, str(e))
+
+        finally:
+            self.update_status("就绪")
+            self.query_btn.config(state=tk.NORMAL)
+            self.visit_btn.config(state=tk.NORMAL if self.current_ip else tk.DISABLED)
+    def _update_pollution_tree(self, server, status, ips, error):
+        """更新污染检测树"""
+        ips_display = ", ".join(ips) if ips else error
+        confidence = f"{len(ips)}/3" if ips else "0/3"
+
+        # 插入数据并获取项ID
+        item_id = self.pollution_tree.insert(
+            "",
+            "end",
+            values=(server, status, ips_display, confidence)
+        )
+
+        # 滚动到新插入的项
+        self.pollution_tree.see(item_id)
+
+        # 保持自动滚动（可选）
+        self.pollution_tree.yview_moveto(1)
+
+    def _clear_all_results(self):
+        """清空所有结果"""
+        # 原有清空逻辑
+        self.display_area.config(text="")
+        self.process_tree.delete(*self.process_tree.get_children())
+
+        # 新增清空污染检测
+        self.pollution_tree.delete(*self.pollution_tree.get_children())
+        self.pollution_status.config(text="检测中...", foreground="blue")
 class DNSLogger:
     """解析过程记录器"""
 
@@ -261,4 +386,3 @@ class DNSLogger:
             f"{status_icon} {step}",
             detail
         )
-

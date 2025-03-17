@@ -4,15 +4,16 @@ import random
 import re
 import time
 import binascii
+from collections import defaultdict
 from venv import logger
-
+from concurrent.futures import ThreadPoolExecutor
 def validate_domain(domain):
     """验证域名格式"""
     pattern = r"^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$"
     return re.match(pattern, domain) is not None
 
 
-def resolve_dns(domain, logger=None):
+def resolve_dns(domain, dns_server='8.8.8.8',logger=None):
     """带过程记录的解析"""
     try:
         if logger: logger.add_step("开始解析", True)
@@ -25,7 +26,7 @@ def resolve_dns(domain, logger=None):
         if logger: logger.add_step("发送请求", True, "使用UDP协议")
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.settimeout(5)
-            sock.sendto(query, ('8.8.8.8', 53))#谷歌公共DNS地址，53为端口号、udp协议
+            sock.sendto(query, (dns_server, 53))#谷歌公共DNS地址，53为端口号、udp协议
 
     # 等待响应
             if logger: logger.add_step("等待响应", True, "超时：5秒")
@@ -186,3 +187,45 @@ def parse_name(data, offset):
             name.append(data[offset:offset+length].decode())
             offset += length
     return name, offset
+
+
+PUBLIC_DNS_SERVERS = {
+    'Google DNS': '8.8.8.8',
+    'Cloudflare': '1.1.1.1',
+    'Quad9': '9.9.9.9'
+}
+
+
+def check_dns_pollution(domain, logger=None):
+    """DNS污染检测核心逻辑"""
+    results = {}
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures = {
+            executor.submit(resolve_dns, domain, server): (name, server)
+            for name, server in PUBLIC_DNS_SERVERS.items()
+        }
+
+        for future in futures:
+            name, server = futures[future]
+            try:
+                ips = future.result(timeout=5)
+                results[name] = ips
+                if logger:
+                    logger.add_step(f"{name}查询", True, f"返回IP: {', '.join(ips)}")
+            except Exception as e:
+                results[name] = [f"错误: {str(e)}"]
+                if logger:
+                    logger.add_step(f"{name}查询", False, str(e))
+
+    # 分析结果
+    all_ips = [ip for ips in results.values() for ip in ips if isinstance(ips, list)]
+    unique_ips = list(set(all_ips))
+    is_polluted = len(unique_ips) > 1
+
+    return {
+        "is_polluted": is_polluted,
+        "results": results,
+        "consensus_ip": max(set(all_ips), key=all_ips.count) if all_ips else None
+    }
+
